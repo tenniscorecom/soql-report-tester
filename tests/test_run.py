@@ -14,7 +14,7 @@ import pytest
 from comken.core.table.model import Table
 
 from tester.cli import main as cli_main
-from tester.run import CountStatus
+from tester.run import CountStatus, _safe_filename_part
 from tests.conftest import (
     REPORT_PAYLOAD_ROW_COUNT_3,
     REPORT_PAYLOAD_WITHOUT_ROW_COUNT,
@@ -301,3 +301,43 @@ def test_returns_zero_when_count_cannot_be_compared(
 
     assert exit_code == 0
     assert any(call[0] == "request" for call in calls)
+
+
+def test_writes_csv_directly_into_output_dir_when_key_has_invalid_filename_chars(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_config: SimpleNamespace,
+    reports_dir: Path,
+    fake_salesforce: tuple[FakeSalesforce, list[tuple[Any, Any]]],
+) -> None:
+    """管理番号にファイル名に使えない文字が入っていても、CSV は出力フォルダの直下に出る。"""
+    salesforce, calls = fake_salesforce
+    monkeypatch.setattr("tester.run.site_for", make_site_for(salesforce, calls))
+    body = '''
+class PathKeyReport(SoqlReport):
+    """ファイル名に使えない文字の管理番号を持つレポート定義。"""
+
+    KEY = "A/1:2"
+
+    def soql(self) -> str:
+        """テスト用の SOQL。"""
+        return "SELECT Id, SampleName FROM Sample__c"
+'''
+    write_report_file(reports_dir, "path_key_report.py", body)
+
+    exit_code = cli_main(["A/1:2", "--url", REPORT_URL])
+
+    assert exit_code == 0
+    output_dir = fake_config.FILES.OUTPUT_DIR
+    csv_files = list(output_dir.glob("*.csv"))
+    assert len(csv_files) == 1
+    # 出力フォルダの直下に置かれる（サブフォルダに散らばらない）
+    assert csv_files[0].parent == output_dir
+    assert list(output_dir.iterdir()) == csv_files
+    # ファイル名に使えない文字は ``_`` に置き換わる
+    assert csv_files[0].name.startswith("A_1_2_")
+
+
+@pytest.mark.parametrize("char", list('\\/:*?"<>|'))
+def test_replaces_every_invalid_filename_character(char: str) -> None:
+    """Windows のファイル名に使えない文字は、すべて ``_`` に置き換わる。"""
+    assert _safe_filename_part(f"a{char}b") == "a_b"

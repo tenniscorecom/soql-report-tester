@@ -36,6 +36,9 @@ from tester.reports import ReportDefinition
 
 logger = logging.getLogger(__name__)
 
+# Windows のファイル名に使えない文字（``KEY`` をファイル名に使うためだけ置き換える）
+INVALID_FILENAME_CHARS = '\\/:*?"<>|'
+
 
 class CountStatus:
     """件数の比較結果（画面に出す語）。"""
@@ -152,11 +155,21 @@ def _transform(instance: Any, report_cls: type, table: Table) -> Table:
     return transformed
 
 
+def _safe_filename_part(key: str) -> str:
+    """``KEY`` をファイル名に使える形にして返す。
+
+    Windows のファイル名に使えない文字（``\\ / : * ? " < > |``）は
+    すべて ``_`` に置き換える。 置き換えるのは **ファイル名だけ** で、
+    管理番号そのもの（画面やログに出る値）は変えない。
+    """
+    return "".join("_" if char in INVALID_FILENAME_CHARS else char for char in key)
+
+
 def _write_csv(key: str, table: Table) -> Path:
     """CSV を書き出して、パスを返す（UTF-8 BOM 付き）。"""
     folder = output_dir()
     folder.mkdir(parents=True, exist_ok=True)
-    path = folder / f"{key}_{now():%Y%m%d_%H%M%S}.csv"
+    path = folder / f"{_safe_filename_part(key)}_{now():%Y%m%d_%H%M%S}.csv"
     with CSV(path, encoding=UTF8_SIG) as csv_file:
         csv_file.replace(table)
     logger.info("CSV を書き出しました: %s", path)

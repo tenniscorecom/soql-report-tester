@@ -22,8 +22,6 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
-from comken.core.table.model import Table
-from comken.toolbox.excel import Excel
 
 # プロジェクトルート（``tester/`` の親）と comken の場所を ``sys.path`` に足す。
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -32,6 +30,26 @@ _COMKEN_FALLBACK = _PROJECT_ROOT.parent / "comken"
 # ダウンローダーの場所（config.ini.example の既定値と同じ隣フォルダ）。
 # 本体はここを ``sys.path`` の先頭に足して ``src.soql_reports`` を import する。
 _DOWNLOADER_ROOT = _PROJECT_ROOT.parent / "Salesforceレポートダウンローダー"
+
+
+def _append_sys_path(path: Path) -> None:
+    """``sys.path`` の末尾に ``path`` を足す（既にあれば何もしない）。"""
+    text = str(path)
+    if text not in sys.path:
+        sys.path.append(text)
+
+
+# comken を import できるようにする（末尾に足す理由はモジュール docstring 参照）。
+# **comken の ``import`` より前に実行する**: comken の ``import`` を先に書くと、
+# 隣接フォルダにある comken を見つけられず、import に失敗する。
+_python_library = os.environ.get("PYTHON_LIBRARY", "")
+if _python_library:
+    _append_sys_path(Path(_python_library))
+elif _COMKEN_FALLBACK.is_dir():
+    _append_sys_path(_COMKEN_FALLBACK)
+
+from comken.core.table.model import Table  # noqa: E402
+from comken.toolbox.excel import Excel  # noqa: E402
 
 # レポート API の返り値（実物の形）。
 # ``reportMetadata.aggregates`` の "RowCount" の位置が、
@@ -46,21 +64,6 @@ REPORT_PAYLOAD_WITHOUT_ROW_COUNT: dict[str, Any] = {
     "reportMetadata": {"aggregates": []},
     "factMap": {"T!T": {"aggregates": []}},
 }
-
-
-def _append_sys_path(path: Path) -> None:
-    """``sys.path`` の末尾に ``path`` を足す（既にあれば何もしない）。"""
-    text = str(path)
-    if text not in sys.path:
-        sys.path.append(text)
-
-
-# comken を import できるようにする（末尾に足す理由はモジュール docstring 参照）
-_python_library = os.environ.get("PYTHON_LIBRARY", "")
-if _python_library:
-    _append_sys_path(Path(_python_library))
-elif _COMKEN_FALLBACK.is_dir():
-    _append_sys_path(_COMKEN_FALLBACK)
 
 
 @pytest.fixture(scope="session")
