@@ -36,3 +36,4 @@ input/*
 # 試すレポート定義（.py）。実データ（SOQL・列名）を含むため git に含めない
 reports/*.py
 !reports/.gitkeep
+!reports/__init__.py

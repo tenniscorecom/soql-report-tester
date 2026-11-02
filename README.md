@@ -99,6 +99,44 @@ class SampleReport(SoqlReport):
 
 ---
 
+## Python のコードから呼ぶ
+
+コマンド（`main.py`）ではなく、**Python のコードの中から**レポートを実行できます。
+管理表（Excel）も `config.ini` の接続設定も通しません。接続は呼び出し側が
+comken の組織クラスで開きます。
+
+```python
+from comken.toolbox.salesforce.sites import SolutionSandbox
+from reports import *
+from tester import to_csv
+
+report_1001                  # reports/report_1001.py（モジュール）
+report_1001.Report1001       # クラスそのもの
+
+with SolutionSandbox() as sf:
+    to_csv(report_1001, sf)              # SOQL 実行・件数比較・CSV 出力
+    to_csv(report_1002.Report1002, sf)   # クラスで。同じ接続のまま続けられる
+```
+
+- `to_csv()` は **接続を開かないし閉じない**（渡された接続を使うだけ）
+- 件数を比較するのは、レポート定義に `REPORT_ID` があるときだけです
+  （無いときは「比較せず」＝判定は「比較できず」）
+
+  ```python
+  class Report1001(SoqlReport):
+      KEY = "1001"
+      REPORT_ID = "00O000000000001AAA"   # Salesforce のレポート ID
+  ```
+
+- CSV の書き出し先は `config.ini` の `[FILES] OUTPUT_DIR`（管理表は不要）
+- 画面に出るものは件数・列名・出力先だけ（行の値は出さない）
+
+**スクリプトはこのリポジトリの直下に置いて実行する**（`python 試す.py`）。
+`reports` パッケージと `tester` が見つかるのは、スクリプトのあるフォルダが
+`sys.path` に入るため。
+
+---
+
 ## ダウンローダーへ移す手順
 
 確認が済んだら、**この道具では何も置かない**。次の2つを**手作業で**行います。

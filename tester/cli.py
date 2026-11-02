@@ -36,7 +36,7 @@ from tester.reports import (
     load_report_file,
     load_reports,
 )
-from tester.run import CountStatus, RunResult, run_report
+from tester.run import CountStatus, print_result, read_soql, run_report
 
 logger = logging.getLogger(__name__)
 
@@ -129,7 +129,7 @@ def _dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     if args.target is None:
         parser.error("管理番号（例: 1001）またはレポート定義の .py を指定してください")
     definition = _resolve_definition(args.target)
-    soql_text = _read_soql(definition)
+    soql_text = read_soql(definition)
     if args.show:
         print(soql_text)
         return EXIT_OK
@@ -141,7 +141,7 @@ def _dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
         return EXIT_FAILURE
     url = args.url or find_url(master_xlsx_path(), definition.key)
     result = run_report(definition, url, soql_text)
-    _print_result(result)
+    print_result(result)
     if result.count_status == CountStatus.MISMATCH:
         return EXIT_FAILURE
     return EXIT_OK
@@ -152,17 +152,6 @@ def _resolve_definition(target: str) -> ReportDefinition:
     if target.lower().endswith(".py"):
         return load_report_file(Path(target))
     return find_report_by_key(reports_dir(), target)
-
-
-def _read_soql(definition: ReportDefinition) -> str:
-    """レポート定義の SOQL を読み取る。"""
-    try:
-        return str(definition.report_cls().soql())
-    except Exception as exc:
-        raise ComkenError(
-            f"SOQL を取得できませんでした: クラス={definition.class_name}, "
-            f"例外={type(exc).__name__}"
-        ) from exc
 
 
 def _print_report_list(definitions: list[ReportDefinition]) -> None:
@@ -187,17 +176,3 @@ def _state_of(definition: ReportDefinition) -> str:
     if is_incomplete(soql_text):
         return "未完成"
     return "実行可"
-
-
-def _print_result(result: RunResult) -> None:
-    """実行結果を表示する（件数と列名だけ。行の値は出さない）。"""
-    print(f"クラス名: {result.class_name}")
-    print(f"SOQL 件数: {result.soql_count}")
-    if result.report_count is None:
-        print("レポート件数: （取れませんでした）")
-    else:
-        print(f"レポート件数: {result.report_count}")
-    print(f"判定: {result.count_status}")
-    print(f"列数: {len(result.columns)}")
-    print(f"列名: {', '.join(result.columns)}")
-    print(f"出力先: {result.output_path}")

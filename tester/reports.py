@@ -8,17 +8,24 @@ soql-collector が作るレポート定義は、1 レポート 1 ファイルの
 **ちょうど 1 つ**でなければエラーにする。 管理番号（``KEY``）が空 ·
 管理番号が重複などの設定ミスもエラーにする（黙って片方を選ぶと、
 違うレポートを試してしまう）。
+
+フォルダを 1 つのパッケージとしてまとめて読み込む ``load_package()`` もある。
+``reports/`` のようなフォルダの中のレポート定義を全部読み込んで公開する
+（``from reports import *``）ためのもの。
 """
 
 from __future__ import annotations
 
+import importlib
 import importlib.util
 import logging
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from tester.downloader import incomplete_marker, soql_report_base
+from tester.paths import prepare_downloader_imports
 
 if TYPE_CHECKING:  # 実行時は import しない（config.ini を読む前に失敗させないため）
     from src.soql_reports.base import SoqlReport
@@ -45,6 +52,8 @@ class ReportDefinition:
     path: Path
     #: ``SoqlReport`` のサブクラス
     report_cls: type[SoqlReport]
+    #: Salesforce のレポート ID（``SoqlReport.REPORT_ID``。無いときは空文字）
+    report_id: str
 
 
 def load_report_file(path: Path) -> ReportDefinition:
@@ -59,32 +68,95 @@ def load_report_file(path: Path) -> ReportDefinition:
     # 先にダウンローダーの場所を ``sys.path`` に入れておく。レポート定義は
     # ``from src.soql_reports.base import SoqlReport`` と書いてあるため、
     # 読み込む前に ``src`` が見つかるようにしておかないと import で失敗する
-    base = soql_report_base()
+    prepare_downloader_imports()
     module_name = f"{MODULE_PREFIX}{path.stem}"
     spec = importlib.util.spec_from_file_location(module_name, path)
     if spec is None or spec.loader is None:
         raise ValueError(f"Python のファイルとして読み込めません: {path}")
     module = importlib.util.module_from_spec(spec)
+    # ``definition_of_class()`` が ``sys.modules`` を見てファイル位置を確かめるため、
+    # 実行前に登録する（読み込みに失敗したら登録を取り消す）
+    sys.modules[module_name] = module
     try:
         spec.loader.exec_module(module)
     except Exception as exc:
+        sys.modules.pop(module_name, None)
         # 例外のメッセージには行の値が入ることがあるため、型名だけを出す
         raise ValueError(
             f"レポート定義を読み込めませんでした: {path}（{type(exc).__name__}）"
         ) from exc
-    report_cls = _pick_report_class(module, module_name, path, base)
+    return definition_of_class(pick_report_class(module))
+
+
+def definition_of_class(report_cls: type) -> ReportDefinition:
+    """レポートのクラスから、レポート定義 1 件を返す。
+
+    ファイル位置は ``sys.modules`` にあるクラスの居場所から確かめる
+    （``sys.modules[report_cls.__module__].__file__``）。
+
+    Raises:
+        ValueError: クラスが属するモジュールが ``sys.modules`` に無い、
+            管理番号（``KEY``）が空のとき。
+    """
+    module = sys.modules.get(report_cls.__module__)
+    file_path = getattr(module, "__file__", None)
+    if not file_path:
+        raise ValueError(
+            f"レポートのクラスの居場所が分かりません: {report_cls.__module__}.{report_cls.__name__}"
+        )
     key = str(getattr(report_cls, "KEY", "") or "").strip()
     if not key:
         raise ValueError(
-            f"管理番号（KEY）が空です: {path}\n"
+            f"管理番号（KEY）が空です: {file_path}\n"
             'SoqlReport.KEY に管理番号を書いてください（例: KEY = "1001"）。'
         )
+    # レポート ID は基底クラスに無いので ``getattr`` で読む
+    # （ダウンローダーの ``SoqlReport`` は変更しない）
+    report_id = str(getattr(report_cls, "REPORT_ID", "") or "").strip()
     return ReportDefinition(
         key=key,
         class_name=report_cls.__name__,
-        path=path,
+        path=Path(file_path),
         report_cls=report_cls,
+        report_id=report_id,
     )
+
+
+def load_package(package_name: str, folder: str) -> list[str]:
+    """フォルダ内のレポート定義を全部読み込んで、レポート名のリストを返す。
+
+    戻り値は **パッケージの中の名前**（``report_1001`` など）のリストで、
+    ``from reports import *`` の ``__all__`` に使える形。
+
+    - ファイル名が ``_`` で始まるもの（``__init__.py`` や雛形）は読み飛ばす
+    - Python の名前として書けないファイル名（``1001.py`` など）も読み飛ばす
+      （``import`` できないため。警告を出す）
+    - 管理番号（``KEY``）の検査と重複検査は **しない**
+      （使うとき＝``to_csv()`` と CLI で検査する）
+
+    Raises:
+        ValueError: レポート定義が読み込めないとき。
+    """
+    prepare_downloader_imports()
+    names: list[str] = []
+    for path in sorted(Path(folder).glob("*.py")):
+        stem = path.stem
+        if stem.startswith(TEMPLATE_PREFIX):
+            continue
+        if not stem.isidentifier():
+            logger.warning(
+                "Python の名前として書けないファイル名なので読み飛ばします: %s", path.name
+            )
+            continue
+        try:
+            importlib.import_module(f"{package_name}.{stem}")
+        except Exception as exc:
+            # 例外のメッセージには行の値が入ることがあるため、型名だけを出す
+            raise ValueError(
+                f"レポート定義を読み込めませんでした: {path}（{type(exc).__name__}）"
+            ) from exc
+        names.append(stem)
+    return names
 
 
 def load_reports(reports_root: Path) -> list[ReportDefinition]:
@@ -131,12 +203,18 @@ def is_incomplete(soql_text: str) -> bool:
     return soql_text.lstrip().startswith(incomplete_marker())
 
 
-def _pick_report_class(module: object, module_name: str, path: Path, base: type) -> type:
-    """読み込んだモジュールから、定義された ``SoqlReport`` サブクラスを 1 つ選ぶ。
+def pick_report_class(module: object) -> type:
+    """モジュールから、定義された ``SoqlReport`` サブクラスを 1 つ選んで返す。
 
     ``import`` しただけのクラス（``from ... import SomeReport``）は数えない。
     対象は、そのファイルの中で定義されたクラスだけ。
+
+    Raises:
+        ValueError: サブクラスがちょうど 1 つでないとき。
     """
+    base = soql_report_base()
+    module_name = getattr(module, "__name__", "")
+    path = Path(getattr(module, "__file__", "") or "")
     candidates = [
         obj
         for obj in vars(module).values()

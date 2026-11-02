@@ -13,6 +13,12 @@
 もので、件数不一致のまま中身を捨てると何が起きているか分からなくなるため。
 
 **行の値は画面にもログにも出さない。** 件数・列名・出力先だけを出す。
+
+**接続の開き方:**
+
+- コマンド（``main.py``）は ``site_for(url)`` でつなぐ
+- Python のコードから呼ぶとき（``to_csv()``）は、**呼び出し側が開いた接続**を
+  受け取る（ここでは開かない）。 そのため管理表もレポート URL も読まない
 """
 
 from __future__ import annotations
@@ -20,6 +26,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
 from comken.core.dates import now
@@ -30,9 +37,9 @@ from comken.toolbox.csv import CSV
 from comken.toolbox.salesforce.report import report_id_from_url
 from comken.toolbox.salesforce.sites import site_for
 
-from tester.downloader import apply_column_names, fetch_report_total_count
+from tester.downloader import apply_column_names, fetch_report_total_count, soql_report_base
 from tester.paths import output_dir
-from tester.reports import ReportDefinition
+from tester.reports import ReportDefinition, definition_of_class, is_incomplete, pick_report_class
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +76,38 @@ class RunResult:
     output_path: Path
 
 
+def to_csv(target: object, salesforce: Any) -> RunResult:
+    """レポート 1 本を実行して、CSV を書き出して結果を返す。
+
+    **接続は呼び出し側が開いたものを使う**（ここでは開かないし閉じない）。
+    そのため管理表もレポート URL も読まない。
+
+    Args:
+        target: レポートのクラス、または 1 つだけレポートのクラスを定義した
+            モジュール（``reports.report_1001`` など）。
+        salesforce: 開いている Salesforce 接続
+            （``with SolutionSandbox() as sf:`` の中の ``sf``）。
+
+    Returns:
+        実行結果（件数・判定・列名・CSV の書き出し先）。件数が不一致でも
+        例外にはしない（判定は戻り値と表示で分かる）。
+
+    Raises:
+        ValueError: ``target`` がレポートのクラスでもモジュールでもないとき。
+        ComkenError: SOQL が未完成、取得に失敗、加工に失敗、CSV が書けなかったとき。
+    """
+    definition = definition_of_class(_report_class_of(target))
+    soql_text = read_soql(definition)
+    if is_incomplete(soql_text):
+        raise ComkenError(
+            f"未完成です（{definition.path.name}）: "
+            "SOQL の先頭に未完成の印があります。Salesforce には問い合わせません。"
+        )
+    result = _run_on(salesforce, definition, soql_text, definition.report_id or None)
+    print_result(result)
+    return result
+
+
 def run_report(definition: ReportDefinition, url: str, soql_text: str) -> RunResult:
     """レポート 1 本を実行して、CSV を書き出して結果を返す。
 
@@ -80,15 +119,62 @@ def run_report(definition: ReportDefinition, url: str, soql_text: str) -> RunRes
     Raises:
         ComkenError: 接続できない、加工に失敗した、CSV を書けなかったとき。
     """
-    report_cls = definition.report_cls
-    instance = report_cls()
     site = site_for(url)
     with site() as salesforce:
-        table = salesforce.bulk_query(soql_text)
-        soql_count = len(table)
-        report_count, count_status = _compare_count(report_cls, salesforce, url, soql_count)
-        transformed = _transform(instance, report_cls, table)
-        named = apply_column_names(report_cls, transformed)
+        return _run_on(salesforce, definition, soql_text, _report_id_of(definition.report_cls, url))
+
+
+def read_soql(definition: ReportDefinition) -> str:
+    """レポート定義の SOQL を読み取る。
+
+    Raises:
+        ComkenError: SOQL が取れなかったとき（メッセージに値は出さない）。
+    """
+    try:
+        return str(definition.report_cls().soql())
+    except Exception as exc:
+        raise ComkenError(
+            f"SOQL を取得できませんでした: クラス={definition.class_name}, "
+            f"例外={type(exc).__name__}"
+        ) from exc
+
+
+def print_result(result: RunResult) -> None:
+    """実行結果を表示する（件数と列名だけ。行の値は出さない）。"""
+    print(f"クラス名: {result.class_name}")
+    print(f"SOQL 件数: {result.soql_count}")
+    if result.report_count is None:
+        print("レポート件数: （取れませんでした）")
+    else:
+        print(f"レポート件数: {result.report_count}")
+    print(f"判定: {result.count_status}")
+    print(f"列数: {len(result.columns)}")
+    print(f"列名: {', '.join(result.columns)}")
+    print(f"出力先: {result.output_path}")
+
+
+def _run_on(
+    salesforce: Any,
+    definition: ReportDefinition,
+    soql_text: str,
+    report_id: str | None,
+) -> RunResult:
+    """開いている接続で 1 本のレポートを実行する（CSV の書き出しまで）。
+
+    Args:
+        salesforce: 開いている Salesforce 接続。
+        definition: 実行するレポート定義。
+        soql_text: 実行する SOQL。
+        report_id: 件数の比較に使う Salesforce のレポート ID
+            （無いなら ``None``＝比較しない）。
+    """
+    report_cls = definition.report_cls
+    instance = report_cls()
+    table = salesforce.bulk_query(soql_text)
+    soql_count = len(table)
+    report_count, count_status = _compare_count(report_cls, salesforce, report_id, soql_count)
+    transformed = _transform(instance, report_cls, table)
+    named = apply_column_names(report_cls, transformed)
     output_path = _write_csv(definition.key, named)
     return RunResult(
         key=definition.key,
@@ -104,17 +190,19 @@ def run_report(definition: ReportDefinition, url: str, soql_text: str) -> RunRes
 def _compare_count(
     report_cls: type,
     salesforce: Any,
-    url: str,
+    report_id: str | None,
     soql_count: int,
 ) -> tuple[int | None, str]:
     """SOQL の件数とレポートの総件数を比べる。
 
     比較は **加工前の生の件数** で行う（レポートの総件数と比べられるのは
     加工前の件数のため）。 戻り値は ``(レポート件数, 判定)`` 。
+
+    ``report_id`` が ``None`` のときは、比較しない（``CHECK_COUNT`` が ``False``）
+    か、比較する ID が無い（判定は「比較できず」）のどちらか。
     """
     if not report_cls.CHECK_COUNT:
         return None, CountStatus.SKIPPED
-    report_id = _report_id_of(url)
     if report_id is None:
         return None, CountStatus.NOT_COMPARED
     report_count = fetch_report_total_count(salesforce, report_id)
@@ -125,13 +213,41 @@ def _compare_count(
     return report_count, CountStatus.MISMATCH
 
 
-def _report_id_of(url: str) -> str | None:
-    """URL から Salesforce のレポート ID を取り出す（取れなければ ``None``）。"""
+def _report_id_of(report_cls: type, url: str) -> str | None:
+    """URL から Salesforce のレポート ID を取り出す（取れなければ ``None``）。
+
+    件数を比較しないレポート（``CHECK_COUNT`` が ``False``）は ID を取り出さない
+    （取り出せなくても比較しないため。取り出せなかったときの警告も出さない）。
+    """
+    if not report_cls.CHECK_COUNT:
+        return None
     try:
         return report_id_from_url(url)
     except SalesforceReportIDNotFoundError:
         logger.warning("URL からレポート ID を取り出せません（件数を比較できません）: %s", url)
         return None
+
+
+def _report_class_of(target: object) -> type:
+    """``to_csv()`` の対象から、レポートのクラスを 1 つ取り出す。
+
+    モジュールは、その中で定義された ``SoqlReport`` サブクラスがちょうど 1 つ
+    ならそのクラスにする（``pick_report_class()`` と同じ規則）。
+
+    Raises:
+        ValueError: レポートのクラスでもモジュールでもないとき。
+    """
+    if isinstance(target, type):
+        base = soql_report_base()
+        if issubclass(target, base) and target is not base:
+            return target
+        raise ValueError(f"SoqlReport のサブクラスを指定してください: {target.__name__}")
+    if isinstance(target, ModuleType):
+        return pick_report_class(target)
+    raise ValueError(
+        "レポートのクラスか、1 つだけレポートのクラスを定義したモジュールを指定してください: "
+        f"{type(target).__name__}"
+    )
 
 
 def _transform(instance: Any, report_cls: type, table: Table) -> Table:
