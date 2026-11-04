@@ -1,4 +1,4 @@
-"""REPORTS に並べたレポートを bulk_query で取得して、件数を比べ、CSV に書き出す。"""
+"""KEYS に並べたレポートを bulk_query で取得して、件数を比べ、CSV に書き出す。"""
 
 from pathlib import Path
 
@@ -7,20 +7,22 @@ from comken.toolbox.csv import CSV
 from comken.toolbox.salesforce.client import SalesforceBase
 from comken.toolbox.salesforce.sites import SolutionSandbox
 
-import reports  # noqa: F401  REPORTS にレポートを書くまで未使用になるため
+from reports import REPORTS_BY_KEY
 from src.soql_reports.base import SoqlReport
 
-REPORTS: list[type[SoqlReport]] = [
-    # reports.Report1001,
+KEYS: list[str] = [
+    # "1001",
 ]
 
 OUTPUT_DIR = Path(__file__).parent.parent / "output"
 
 
 def main() -> None:
-    """REPORTS を順に取得して、件数を表示し、CSV に書き出す。"""
+    """KEYS のレポートを順に取得して、件数を表示し、CSV に書き出す。"""
+    # 番号を書き間違えたときに、Salesforce へ接続する前に止める
+    reports = [REPORTS_BY_KEY[key] for key in KEYS]
     with SolutionSandbox() as sf:
-        for report in REPORTS:
+        for report in reports:
             table = sf.bulk_query(report().soql())
             comparison = _compare_count(sf, report, len(table))
             names = report.COLUMN_NAMES

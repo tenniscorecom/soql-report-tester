@@ -10,6 +10,7 @@ from typing import ClassVar
 class SoqlReport:
     """レポート 1 本の定義。サブクラスで soql() を実装する。"""
 
+    KEY: ClassVar[str] = ""
     REPORT_ID: ClassVar[str] = ""
     COLUMN_NAMES: ClassVar[dict[str, str]] = {}
 

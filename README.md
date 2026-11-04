@@ -12,11 +12,11 @@ Salesforce の SOQL レポート定義（`SoqlReport` のサブクラスを書�
 `reports/` にレポート定義（`SoqlReport` のサブクラスを1つだけ書いた `.py`）を置く。
 `.py` には実データ（SOQL・列名）が入るので git には入りません。
 
-置いた `.py` は自動で読み込まれるので、import は書かない。`src/run.py` の `REPORTS` に並べる。
+置いた `.py` は自動で読み込まれるので、import は書かない。`src/run.py` の `KEYS` に管理番号を並べる。
 
 ```python
-REPORTS: list[type[SoqlReport]] = [
-    reports.Report1001,  # 例（管理番号は架空の値）
+KEYS: list[str] = [
+    "1001",  # 例（管理番号は架空の値）
 ]
 ```
 

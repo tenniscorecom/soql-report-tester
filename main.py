@@ -1,6 +1,6 @@
 """レポートをまとめて bulk_query で取得して、CSV に書き出す。
 
-試すレポートは src/run.py の REPORTS に並べる。
+試すレポートは src/run.py の KEYS に並べる。
 """
 
 from comken import comken_logger
