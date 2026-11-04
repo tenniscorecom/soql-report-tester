@@ -10,15 +10,17 @@ Salesforce の SOQL レポート定義（`SoqlReport` のサブクラスを書�
 ## レポートを並べる
 
 `reports/` にレポート定義（`SoqlReport` のサブクラスを1つだけ書いた `.py`）を置く。
-`.py` には実データ（SOQL・列名）が入るので git には入りません。`src/run.py` の `REPORTS` に並べる。
+`.py` には実データ（SOQL・列名）が入るので git には入りません。
+
+置いた `.py` は自動で読み込まれるので、import は書かない。`src/run.py` の `REPORTS` に並べる。
 
 ```python
-from reports.report_1001 import Report1001  # 例（管理番号は架空の値）
-
-REPORTS: list[type] = [
-    Report1001,
+REPORTS: list[type[SoqlReport]] = [
+    reports.Report1001,  # 例（管理番号は架空の値）
 ]
 ```
+
+読み込めない `.py` が 1 つでもあると、実行が止まる。
 
 ## 実行する
 

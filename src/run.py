@@ -7,12 +7,11 @@ from comken.toolbox.csv import CSV
 from comken.toolbox.salesforce.client import SalesforceBase
 from comken.toolbox.salesforce.sites import SolutionSandbox
 
+import reports  # noqa: F401  REPORTS にレポートを書くまで未使用になるため
 from src.soql_reports.base import SoqlReport
 
-# 例: from reports.report_1001 import Report1001
-
 REPORTS: list[type[SoqlReport]] = [
-    # Report1001,
+    # reports.Report1001,
 ]
 
 OUTPUT_DIR = Path(__file__).parent.parent / "output"
