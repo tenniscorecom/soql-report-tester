@@ -4,9 +4,7 @@
   //
   // 実行.bat の PYTHON_LIBRARY と同じ場所を指すこと。
   // JSON では \ が特殊文字なので、区切りは / で書く（\\server\share → //server/share）。
-  // ダウンローダーの場所も入れておく（レポート定義が `from src.soql_reports...` と
-  // 書いているため。src の親であるフォルダを入れる）。
-  "python.analysis.extraPaths": ["F:/dev/comken", "F:/dev/Salesforceレポートダウンローダー"],
+  "python.analysis.extraPaths": ["F:/dev/comken"],
 
   // 社内 BO 環境には .venv が無い（pip が使えないため）。
   // その場合はこの指定が外れるので、VS Code 右下の Python バージョン表示をクリックして

@@ -1,6 +1,4 @@
-# 機密情報・環境設定（絶対に git に含めない。example だけ含める）
-config.ini
-state.ini
+# 機密情報・環境設定（絶対に git に含めない）
 .env
 
 # Python
@@ -14,12 +12,10 @@ venv/
 dist/
 build/
 .ruff_cache/
-.pytest_cache/
 
 # Config の補完スタブ（自動生成。エディタ補完専用なので git に含めない）
 typings/
 config.pyi
-tester/config.pyi
 
 # ログ・出力・一時ファイル
 logs/
@@ -29,11 +25,6 @@ logs/
 output/*
 !output/.gitkeep
 
-# 入力（レポート管理表。実データを含むため git に含めない）
-input/*
-!input/.gitkeep
-
 # 試すレポート定義（.py）。実データ（SOQL・列名）を含むため git に含めない
 reports/*.py
 !reports/.gitkeep
-!reports/__init__.py
