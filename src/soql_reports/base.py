@@ -13,6 +13,8 @@ class SoqlReport:
     KEY: ClassVar[str] = ""
     REPORT_ID: ClassVar[str] = ""
     COLUMN_NAMES: ClassVar[dict[str, str]] = {}
+    # False なら query()（REST）で取る
+    USE_BULK: ClassVar[bool] = True
 
     def soql(self) -> str:
         """実行する SOQL を返す。"""

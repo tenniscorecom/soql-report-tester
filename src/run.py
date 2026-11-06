@@ -1,4 +1,4 @@
-"""KEYS に並べたレポートを bulk_query で取得して、件数を比べ、CSV に書き出す。"""
+"""KEYS に並べたレポートを bulk_query か query で取得して、件数を比べ、CSV に書き出す。"""
 
 from pathlib import Path
 
@@ -23,7 +23,14 @@ def main() -> None:
     reports = [REPORTS_BY_KEY[key] for key in KEYS]
     with SolutionSandbox() as sf:
         for report in reports:
-            table = sf.bulk_query(report().soql())
+            soql = report().soql()
+            # 取り方はレポートごとの USE_BULK で選ぶ（False なら REST の query() になる）
+            if report.USE_BULK:
+                table = sf.bulk_query(soql)
+                method = "Bulk"
+            else:
+                table = sf.query(soql)
+                method = "REST"
             comparison = _compare_count(sf, report, len(table))
             names = report.COLUMN_NAMES
             columns = [names.get(column, column) for column in table.columns]
@@ -32,7 +39,7 @@ def main() -> None:
             # 件数が合わなくても、中身を見て確かめられるように CSV は書く
             with CSV(path, encoding=UTF8_SIG) as csv_file:
                 csv_file.replace(table.select(*columns, aliases=aliases))
-            print(f"{report.__name__}: SOQL {len(table)} 件 / {comparison} → {path}")
+            print(f"{report.__name__}[{method}]: SOQL {len(table)} 件 / {comparison} → {path}")
 
 
 def _compare_count(sf: SalesforceBase, report: type[SoqlReport], soql_count: int) -> str:

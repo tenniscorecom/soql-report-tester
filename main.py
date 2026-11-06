@@ -1,4 +1,4 @@
-"""レポートをまとめて bulk_query で取得して、CSV に書き出す。
+"""レポートをまとめて bulk_query か query で取得して、CSV に書き出す。
 
 試すレポートは src/run.py の KEYS に並べる。
 """
