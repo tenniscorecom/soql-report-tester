@@ -1,5 +1,6 @@
 """KEYS に並べたレポート（RUN_ALL なら全部）を取得して、件数を比べ、CSV に書き出す。"""
 
+import traceback
 from pathlib import Path
 
 from comken.core.encoding import UTF8_SIG
@@ -30,30 +31,46 @@ def _select_reports() -> list[type[SoqlReport]]:
 
 
 def main() -> None:
-    """選んだレポートを順に取得して、件数を表示し、CSV に書き出す。"""
+    """選んだレポートを順に取得して、件数を表示し、CSV に書き出す。
+
+    1 つのレポートが失敗しても止めず、残りも続けて実行する。
+    """
     reports = _select_reports()
     if not reports:
         print("実行するレポートがないため、Salesforce には接続しません。")
         return
+    failed_keys: list[str] = []
     with SolutionSandbox() as sf:
         for report in reports:
-            soql = report().soql()
-            # 取り方はレポートごとの USE_BULK で選ぶ（False なら REST の query() になる）
-            if report.USE_BULK:
-                table = sf.bulk_query(soql)
-                method = "Bulk"
-            else:
-                table = sf.query(soql)
-                method = "REST"
-            comparison = _compare_count(sf, report, len(table))
-            names = report.COLUMN_NAMES
-            columns = [names.get(column, column) for column in table.columns]
-            aliases = {names[column]: column for column in table.columns if column in names}
-            path = OUTPUT_DIR / f"{report.__name__}.csv"
-            # 件数が合わなくても、中身を見て確かめられるように CSV は書く
-            with CSV(path, encoding=UTF8_SIG) as csv_file:
-                csv_file.replace(table.select(*columns, aliases=aliases))
-            print(f"{report.__name__}[{method}]: SOQL {len(table)} 件 / {comparison} → {path}")
+            try:
+                _run_report(sf, report)
+            except Exception as exc:
+                traceback.print_exc()
+                print(f"{report.__name__}: 失敗 → {type(exc).__name__}: {exc}")
+                failed_keys.append(report.KEY)
+    if failed_keys:
+        print(f"失敗 {len(failed_keys)} 件: {', '.join(failed_keys)}")
+
+
+def _run_report(sf: SalesforceBase, report: type[SoqlReport]) -> None:
+    """レポート 1 件を取得して、件数を表示し、CSV に書き出す。"""
+    soql = report().soql()
+    # 取り方はレポートごとの USE_BULK で選ぶ（False なら REST の query() になる）
+    if report.USE_BULK:
+        table = sf.bulk_query(soql)
+        method = "Bulk"
+    else:
+        table = sf.query(soql)
+        method = "REST"
+    comparison = _compare_count(sf, report, len(table))
+    names = report.COLUMN_NAMES
+    columns = [names.get(column, column) for column in table.columns]
+    aliases = {names[column]: column for column in table.columns if column in names}
+    path = OUTPUT_DIR / f"{report.__name__}.csv"
+    # 件数が合わなくても、中身を見て確かめられるように CSV は書く
+    with CSV(path, encoding=UTF8_SIG) as csv_file:
+        csv_file.replace(table.select(*columns, aliases=aliases))
+    print(f"{report.__name__}[{method}]: SOQL {len(table)} 件 / {comparison} → {path}")
 
 
 def _compare_count(sf: SalesforceBase, report: type[SoqlReport], soql_count: int) -> str:
