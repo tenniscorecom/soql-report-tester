@@ -20,7 +20,7 @@ KEYS: list[str] = [
 ]
 ```
 
-`src/run.py` の `RUN_ALL` を `True` にすると、`KEYS` を無視して `reports/` にある全レポートを実行する（管理番号の昇順）。
+`src/run.py` の `RUN_ALL` を `True` にすると、`KEYS` を無視して `reports/` にある全レポートを実行する（管理番号の数値順）。
 
 読み込めない `.py` が 1 つでもあると、実行が止まる。
 

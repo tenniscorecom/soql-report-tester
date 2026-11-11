@@ -24,10 +24,18 @@ OUTPUT_DIR = Path(__file__).parent.parent / "output"
 def _select_reports() -> list[type[SoqlReport]]:
     """実行するレポートのクラスを選ぶ。RUN_ALL なら全部、なければ KEYS の順。"""
     if RUN_ALL:
-        # 管理番号の昇順で実行する
-        return [REPORTS_BY_KEY[key] for key in sorted(REPORTS_BY_KEY)]
+        # 管理番号は数値順で実行する
+        return [REPORTS_BY_KEY[key] for key in sorted(REPORTS_BY_KEY, key=_report_sort_key)]
     # 番号を書き間違えたときに、Salesforce へ接続する前に止める
     return [REPORTS_BY_KEY[key] for key in KEYS]
+
+
+def _report_sort_key(key: str) -> tuple[int, int, str]:
+    """管理番号を数値順に並べるためのキーを返す。数字以外は後ろに回して文字列順で並べる。"""
+    # isdecimal() なら int に変換できるので、"²" のような数字扱いではない文字で止まらない
+    if key.isdecimal():
+        return (0, int(key), "")
+    return (1, 0, key)
 
 
 def main() -> None:
