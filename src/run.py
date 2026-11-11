@@ -1,4 +1,4 @@
-"""KEYS に並べたレポートを bulk_query か query で取得して、件数を比べ、CSV に書き出す。"""
+"""KEYS に並べたレポート（RUN_ALL なら全部）を取得して、件数を比べ、CSV に書き出す。"""
 
 from pathlib import Path
 
@@ -10,6 +10,9 @@ from comken.toolbox.salesforce.sites import SolutionSandbox
 from reports import REPORTS_BY_KEY
 from src.soql_reports.base import SoqlReport
 
+# True にすると KEYS を無視して、reports/ にある全レポートを実行する
+RUN_ALL: bool = False
+
 KEYS: list[str] = [
     # "1001",
 ]
@@ -17,10 +20,21 @@ KEYS: list[str] = [
 OUTPUT_DIR = Path(__file__).parent.parent / "output"
 
 
-def main() -> None:
-    """KEYS のレポートを順に取得して、件数を表示し、CSV に書き出す。"""
+def _select_reports() -> list[type[SoqlReport]]:
+    """実行するレポートのクラスを選ぶ。RUN_ALL なら全部、なければ KEYS の順。"""
+    if RUN_ALL:
+        # 管理番号の昇順で実行する
+        return [REPORTS_BY_KEY[key] for key in sorted(REPORTS_BY_KEY)]
     # 番号を書き間違えたときに、Salesforce へ接続する前に止める
-    reports = [REPORTS_BY_KEY[key] for key in KEYS]
+    return [REPORTS_BY_KEY[key] for key in KEYS]
+
+
+def main() -> None:
+    """選んだレポートを順に取得して、件数を表示し、CSV に書き出す。"""
+    reports = _select_reports()
+    if not reports:
+        print("実行するレポートがないため、Salesforce には接続しません。")
+        return
     with SolutionSandbox() as sf:
         for report in reports:
             soql = report().soql()
