@@ -4,6 +4,7 @@ import traceback
 from pathlib import Path
 
 from comken.core.encoding import UTF8_SIG
+from comken.core.table.model import Table
 from comken.toolbox.csv import CSV
 from comken.toolbox.salesforce.client import SalesforceBase
 from comken.toolbox.salesforce.sites import SolutionSandbox
@@ -63,7 +64,8 @@ def main() -> None:
 
 def _run_report(sf: SalesforceBase, report: type[SoqlReport]) -> None:
     """レポート 1 件を取得して、件数を表示し、CSV に書き出す。"""
-    soql = report().soql()
+    instance = report()
+    soql = instance.soql()
     # 取り方はレポートごとの USE_BULK で選ぶ（False なら REST の query() になる）
     if report.USE_BULK:
         table = sf.bulk_query(soql)
@@ -71,7 +73,12 @@ def _run_report(sf: SalesforceBase, report: type[SoqlReport]) -> None:
     else:
         table = sf.query(soql)
         method = "REST"
-    comparison = _compare_count(sf, report, len(table))
+    # 件数の比較は加工前の件数で行う（レポートの総件数と比べられるのは加工前の件数のため）
+    soql_count = len(table)
+    comparison = _compare_count(sf, report, soql_count)
+    table = instance.transform(table)
+    if not isinstance(table, Table):
+        raise TypeError(f"transform() の戻り値が Table ではありません: {type(table).__name__}")
     names = report.COLUMN_NAMES
     columns = [names.get(column, column) for column in table.columns]
     aliases = {names[column]: column for column in table.columns if column in names}
@@ -79,7 +86,11 @@ def _run_report(sf: SalesforceBase, report: type[SoqlReport]) -> None:
     # 件数が合わなくても、中身を見て確かめられるように CSV は書く
     with CSV(path, encoding=UTF8_SIG) as csv_file:
         csv_file.replace(table.select(*columns, aliases=aliases))
-    print(f"{report.__name__}[{method}]: SOQL {len(table)} 件 / {comparison} → {path}")
+    # 加工で件数が変わったときだけ、加工後の件数も表示する
+    counts = f"SOQL {soql_count} 件"
+    if len(table) != soql_count:
+        counts += f" → 加工後 {len(table)} 件"
+    print(f"{report.__name__}[{method}]: {counts} / {comparison} → {path}")
 
 
 def _csv_path(report: type[SoqlReport]) -> Path:

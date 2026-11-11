@@ -6,6 +6,8 @@ soql-collector が生成する .py が `from src.soql_reports.base import SoqlRe
 
 from typing import ClassVar
 
+from comken.core.table.model import Table
+
 
 class SoqlReport:
     """レポート 1 本の定義。サブクラスで soql() を実装する。"""
@@ -19,3 +21,7 @@ class SoqlReport:
     def soql(self) -> str:
         """実行する SOQL を返す。"""
         raise NotImplementedError
+
+    def transform(self, table: Table) -> Table:
+        """SOQL で取った結果を CSV に書く前に加工する。既定は何もしない。"""
+        return table
