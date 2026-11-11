@@ -56,6 +56,7 @@ def main() -> None:
                 traceback.print_exc()
                 print(f"{report.__name__}: 失敗 → {type(exc).__name__}: {exc}")
                 failed_keys.append(report.KEY)
+                _remove_stale_csv(report)
     if failed_keys:
         print(f"失敗 {len(failed_keys)} 件: {', '.join(failed_keys)}")
 
@@ -74,11 +75,26 @@ def _run_report(sf: SalesforceBase, report: type[SoqlReport]) -> None:
     names = report.COLUMN_NAMES
     columns = [names.get(column, column) for column in table.columns]
     aliases = {names[column]: column for column in table.columns if column in names}
-    path = OUTPUT_DIR / f"{report.__name__}.csv"
+    path = _csv_path(report)
     # 件数が合わなくても、中身を見て確かめられるように CSV は書く
     with CSV(path, encoding=UTF8_SIG) as csv_file:
         csv_file.replace(table.select(*columns, aliases=aliases))
     print(f"{report.__name__}[{method}]: SOQL {len(table)} 件 / {comparison} → {path}")
+
+
+def _csv_path(report: type[SoqlReport]) -> Path:
+    """レポートの CSV のパスを返す。"""
+    return OUTPUT_DIR / f"{report.__name__}.csv"
+
+
+def _remove_stale_csv(report: type[SoqlReport]) -> None:
+    """失敗したレポートの CSV を消す。前回の成功した結果を取り違えないようにするため。"""
+    path = _csv_path(report)
+    if not path.exists():
+        return
+    # 書き込みの途中で失敗して中途半端な CSV ができた場合も、同じく消す
+    path.unlink(missing_ok=True)
+    print(f"古い CSV を消しました → {path}")
 
 
 def _compare_count(sf: SalesforceBase, report: type[SoqlReport], soql_count: int) -> str:
