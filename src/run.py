@@ -10,7 +10,7 @@ from comken.toolbox.salesforce.client import SalesforceBase
 from comken.toolbox.salesforce.sites import SolutionSandbox
 
 from reports import REPORTS_BY_KEY
-from src.soql_reports.base import SoqlReport
+from src.reports.base import SoqlReport
 
 # True にすると KEYS を無視して、reports/ にある全レポートを実行する
 RUN_ALL: bool = False

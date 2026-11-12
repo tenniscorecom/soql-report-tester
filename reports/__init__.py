@@ -3,7 +3,7 @@
 from importlib import import_module
 from pkgutil import iter_modules
 
-from src.soql_reports.base import SoqlReport
+from src.reports.base import SoqlReport
 
 REPORTS_BY_KEY: dict[str, type[SoqlReport]] = {}
 

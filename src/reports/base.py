@@ -1,6 +1,6 @@
 """レポート定義の基底クラス。
 
-soql-collector が生成する .py が `from src.soql_reports.base import SoqlReport` と書くので、
+soql-collector が生成する .py が `from src.reports.base import SoqlReport` と書くので、
 この場所に置く。
 """
 
