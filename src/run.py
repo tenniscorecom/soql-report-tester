@@ -76,16 +76,18 @@ def _run_report(sf: SalesforceBase, report: type[SoqlReport]) -> None:
     # 件数の比較は加工前の件数で行う（レポートの総件数と比べられるのは加工前の件数のため）
     soql_count = len(table)
     comparison = _compare_count(sf, report, soql_count)
-    table = instance.transform(table)
-    if not isinstance(table, Table):
-        raise TypeError(f"transform() の戻り値が Table ではありません: {type(table).__name__}")
+    # transform() が表示名で列を扱えるよう、列名を先に置き換える
     names = report.COLUMN_NAMES
     columns = [names.get(column, column) for column in table.columns]
     aliases = {names[column]: column for column in table.columns if column in names}
+    table = table.select(*columns, aliases=aliases)
+    table = instance.transform(table)
+    if not isinstance(table, Table):
+        raise TypeError(f"transform() の戻り値が Table ではありません: {type(table).__name__}")
     path = _csv_path(report)
     # 件数が合わなくても、中身を見て確かめられるように CSV は書く
     with CSV(path, encoding=UTF8_SIG) as csv_file:
-        csv_file.replace(table.select(*columns, aliases=aliases))
+        csv_file.replace(table)
     # 加工で件数が変わったときだけ、加工後の件数も表示する
     counts = f"SOQL {soql_count} 件"
     if len(table) != soql_count:

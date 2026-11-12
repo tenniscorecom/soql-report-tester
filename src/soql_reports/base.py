@@ -23,5 +23,8 @@ class SoqlReport:
         raise NotImplementedError
 
     def transform(self, table: Table) -> Table:
-        """SOQL で取った結果を CSV に書く前に加工する。既定は何もしない。"""
+        """列名を置き換えた後の結果を、CSV に書く前に加工する。既定は何もしない。
+
+        引数の table の列名は、COLUMN_NAMES で置き換えた表示名になっている。
+        """
         return table
