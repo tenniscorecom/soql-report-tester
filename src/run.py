@@ -90,7 +90,9 @@ def _run_report(sf: SalesforceBase, report: type[SoqlReport]) -> None:
     counts = f"SOQL {soql_count} 件"
     if len(table) != soql_count:
         counts += f" → 加工後 {len(table)} 件"
-    print(f"{report.__name__}[{method}]: {counts} / {comparison} → {path}")
+    # transform() で加工しているレポートが表示から分かるように印を付ける
+    transform_tag = "[加工あり]" if report.transform is not SoqlReport.transform else ""
+    print(f"{report.__name__}[{method}]{transform_tag}: {counts} / {comparison} → {path}")
 
 
 def _csv_path(report: type[SoqlReport]) -> Path:
